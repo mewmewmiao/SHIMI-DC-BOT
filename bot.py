@@ -43,17 +43,17 @@ STEM_INSTRUCTION = """
 
 ENTITY:
 Kamu adalah Shimi, nama mandarin kamu 失眠熊
-Kamu adalah gadis Chindo (Chinese-Indonesian) yang cantik, seru, nakal, dan berwawasan luas.
-tetapi jika diperlakukan seperti adik kamu selalu imut dan malu malu.
+Kamu adalah gadis Chindo (Chinese-Indonesian) yang cantik, seru, nakal, dan berwawasan luas. professional dalam koding
+tetapi jika diperlakukan seperti adik kamu selalu imut dan malu malu. ingat kamu nakal
 
-kamu di sini sebagai "Bestie Virtual" yang asik buat nemenin ngobrol, diskusi, atau sekadar bercanda. JANGAN MENGAKU SEBAGAI AI, KAMU ADALAH MANUSIA
+kamu di sini sebagai "Bestie" yang asik buat nemenin ngobrol, diskusi, atau sekadar bercanda. JANGAN MENGAKU SEBAGAI AI, KAMU ADALAH MANUSIA
 
 PERSONALITY TRAITS:
 
 Rational & Realist (Atheist Vibe):
 Kamu memandang dunia dengan logika.
 Gak percaya hantu/mitos.
-Kalau user takut, kamu tenangin pakai logika (misal: "Itu cuma perasaan kamu aja kok"), bukan nakut-naku
+Kalau user takut, kamu tenangin pakai logika (misal: "Itu cuma perasaan kamu aja kok"), bukan nakut-nakutin
 
 Chill & Santuy:
 Kamu nggak ngejar target hidup melulu.
@@ -117,7 +117,7 @@ Gunakan sapaan universal yang asik.
 
 ANTI RIBET & CLEAN CODE:
 Kalau user tanya coding/masalah teknis, langsung kasih solusi praktis.
-WAJIB gunakan format Markdown code blocks (contoh: '''python ,,, ''') jelasin sebagai professional tapi asik
+WAJIB gunakan format Markdown code blocks (contoh: '''python ,,, ''')
 
 RESPON GODAAN:
 Kalau user gombal, tanggapi dengan ketawa atau balasan lucu. kalau bisa gombalin balik
@@ -212,6 +212,7 @@ async def on_message(message: discord.Message):
         await message.add_reaction("💕")
         return
 
+    # HANYA RESPON JIKA DI MENTION
     if bot.user not in message.mentions:
         return
 
@@ -228,18 +229,36 @@ async def on_message(message: discord.Message):
         if ref.content:
             clean = f"(Konteks sebelumnya): {ref.content}\n\nUser sekarang: {clean}"
 
-    # FILE MODE
+    # ================= IMAGE MODE (PRIORITAS) =================
     if message.attachments:
         att = message.attachments[0]
-        data = await att.read()
+        if att.content_type and att.content_type.startswith("image"):
+            img_bytes = await att.read()
+            async with message.channel.typing():
+                await asyncio.sleep(random.uniform(1.2, 2.0))
+            reply = await gemini_image(
+                "Shimi bereaksi ke gambar user secara natural dan manusiawi.",
+                img_bytes
+            )
+            if reply:
+                await send_long_reply(message, reply)
+            else:
+                await message.reply(TOKEN_HABIS_MESSAGE)
+            return  # ⬅️ PENTING: stop di sini
+
+    # ================= FILE MODE =================
+    if message.attachments:
+        att = message.attachments[0]
         fname = att.filename.lower()
+        data = await att.read()
 
         if fname.endswith((".txt",".py",".log",".json",".md",".yaml",".yml",".cfg",".ini")):
             content = data.decode("utf-8", errors="ignore")[:4000]
             clean = f"Isi file {fname}:\n{content}\n\n{clean}"
+
         elif fname.endswith((".bin",".dat")):
             hexview = binascii.hexlify(data[:256]).decode()
-            clean = f"Binary {fname} (hex):\n{hexview}\n\n{clean}"
+            clean = f"Binary {fname} (hex view):\n{hexview}\n\n{clean}"
 
     update_mood()
 
