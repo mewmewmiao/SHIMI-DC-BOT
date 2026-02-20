@@ -241,10 +241,9 @@ async def on_message(message: discord.Message):
             pass
 
         try:
-            warn = await message.channel.send(
+            await message.channel.send(
                 f"{message.author.mention} she is hate u 🤬 u don't have permission to ping or mention her 🤬"
             )
-            await warn.delete(delay=5)
         except:
             pass
 
