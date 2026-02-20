@@ -218,26 +218,37 @@ async def on_message(message: discord.Message):
     # detect mention
     is_mentioning = any(u.id == PROTECTED_USER_ID for u in message.mentions)
 
-    # detect reply ke kamu walau tanpa mention
+    # detect reply (FIXED with fetch fallback)
     is_replying = False
-    if message.reference:
-        ref = message.reference.resolved
-        if ref and getattr(ref.author, "id", None) == PROTECTED_USER_ID:
-            is_replying = True
+    if message.reference and message.reference.message_id:
+        try:
+            ref = message.reference.resolved
+            if ref is None:
+                ref = await message.channel.fetch_message(message.reference.message_id)
+            if ref and getattr(ref.author, "id", None) == PROTECTED_USER_ID:
+                is_replying = True
+        except:
+            pass
 
-    # eksekusi proteksi
+    # eksekusi proteksi (FIXED single trigger)
     if is_mentioning or is_replying:
         if isinstance(message.author, discord.Member) and has_allowed_role(message.author):
-            pass
-        else:
-            try:
-                await message.delete()
-            except:
-                pass
-
-            WARN_MESSAGE = f"{message.author.mention} she is hate u 🤬 u don't have permission to ping or mention her 🤬"
-            await message.channel.send(WARN_MESSAGE)
             return
+
+        try:
+            await message.delete()
+        except:
+            pass
+
+        try:
+            warn = await message.channel.send(
+                f"{message.author.mention} she is hate u 🤬 u don't have permission to ping or mention her 🤬"
+            )
+            await warn.delete(delay=5)
+        except:
+            pass
+
+        return
 
     # AUTO REACT
     if (
