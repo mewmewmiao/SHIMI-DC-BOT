@@ -233,10 +233,10 @@ async def on_message(message: discord.Message):
             except:
                 pass
 
-            WARN_MESSAGE = f"{message.author.mention} she is hate u, u do not have permission to ping or mention this user 🤬"
+            WARN_MESSAGE = f"{message.author.mention} she is hate u 🤬 u don't have permission to ping or mention her 🤬"
 
             await message.channel.send(WARN_MESSAGE)
-            return
+            return 
 
     # AUTO REACT
     if (
