@@ -215,10 +215,8 @@ async def on_message(message: discord.Message):
     def has_allowed_role(member: discord.Member):
         return any(role.id in ALLOWED_ROLE_IDS for role in getattr(member, "roles", []))
 
-    # detect mention
     is_mentioning = any(u.id == PROTECTED_USER_ID for u in message.mentions)
 
-    # detect reply (FIXED with fetch fallback)
     is_replying = False
     if message.reference and message.reference.message_id:
         try:
@@ -230,7 +228,6 @@ async def on_message(message: discord.Message):
         except:
             pass
 
-    # eksekusi proteksi (FIXED single trigger)
     if is_mentioning or is_replying:
         if isinstance(message.author, discord.Member) and has_allowed_role(message.author):
             return
@@ -241,9 +238,10 @@ async def on_message(message: discord.Message):
             pass
 
         try:
-            await message.channel.send(
+            warn = await message.channel.send(
                 f"{message.author.mention} she is hate u 🤬 u don't have permission to ping or mention her 🤬"
             )
+            await warn.delete(delay=10)  # <<< AUTO DELETE 10 DETIK
         except:
             pass
 
