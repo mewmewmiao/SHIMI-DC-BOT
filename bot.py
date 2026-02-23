@@ -261,18 +261,38 @@ async def on_message(message: discord.Message):
         1382666187560849419
     }
 
+    # BYPASS CHANNEL (TEXT + FORUM)
     BYPASS_CHANNEL_IDS = {
-        1389487059001016382,
-        1466415535255453697
+        1389487059001016382,  # text channel bebas
+        1466415535255453697   # forum bebas (semua thread di dalamnya)
     }
 
     def has_allowed_role(member: discord.Member):
         return any(role.id in ALLOWED_ROLE_IDS for role in getattr(member, "roles", []))
 
+    # ===== FIXED FUNCTION =====
+    def is_bypass_channel(channel):
+        # direct text channel
+        if channel.id in BYPASS_CHANNEL_IDS:
+            return True
+
+        # forum / thread (IMPORTANT)
+        if isinstance(channel, discord.Thread):
+            if channel.parent_id in BYPASS_CHANNEL_IDS:
+                return True
+
+        # fallback parent
+        parent = getattr(channel, "parent", None)
+        if parent and parent.id in BYPASS_CHANNEL_IDS:
+            return True
+
+        return False
+    # ==========================
+
     is_mentioning = any(u.id == PROTECTED_USER_ID for u in message.mentions)
 
     if is_mentioning:
-        if message.channel.id in BYPASS_CHANNEL_IDS:
+        if is_bypass_channel(message.channel):
             return
         if isinstance(message.author, discord.Member) and has_allowed_role(message.author):
             return
@@ -300,7 +320,6 @@ async def on_message(message: discord.Message):
         await message.reply(TOKEN_HABIS_MESSAGE)
         return
 
-    # simpan memory
     history = memory_db.get_history(message.author.id)
     history.append(f"User: {clean}")
     history.append(f"Shimi: {reply}")
