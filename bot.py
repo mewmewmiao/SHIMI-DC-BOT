@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-import os, asyncio, random, io, binascii
+import os, asyncio, random, io, binascii, sqlite3, json
 from dotenv import load_dotenv
 from PIL import Image
 from google import genai
@@ -26,6 +26,48 @@ bot = commands.Bot(
     intents=intents
 )
 
+# ================= SQLITE MEMORY =================
+class ShimiMemory:
+    def __init__(self, db_name="shimi_memory.db"):
+        self.db_name = db_name
+        self.init_db()
+
+    def init_db(self):
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS chat_history (
+                user_id INTEGER PRIMARY KEY,
+                history_data TEXT
+            )
+        ''')
+        conn.commit()
+        conn.close()
+
+    def get_history(self, user_id):
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute("SELECT history_data FROM chat_history WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return json.loads(row[0])
+        return []
+
+    def save_history(self, user_id, history):
+        limited_history = history[-20:]
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO chat_history (user_id, history_data)
+            VALUES (?, ?)
+        ''', (user_id, json.dumps(limited_history)))
+        conn.commit()
+        conn.close()
+
+memory_db = ShimiMemory()
+
 # ================= STATE =================
 user_memory = {}
 current_mood = "normal"
@@ -39,7 +81,7 @@ TOKEN_HABIS_MESSAGE = (
 )
 
 # ================= INSTRUCTION =================
-STEM_INSTRUCTION = """ 
+STEM_INSTRUCTION = """
 
 ENTITY:
 Kamu adalah Shimi, nama mandarin kamu 失眠熊
@@ -146,10 +188,17 @@ def get_user(uid):
 def build_prompt(username, uid, msg):
     aff = get_user(uid)["affection"]
     relation = "punya rasa ke user" if aff >= 30 else "teman ngobrol"
+
+    history = memory_db.get_history(uid)
+    history_text = "\n".join(history[-10:])
+
     return f"""{STEM_INSTRUCTION}
 
 Mood: {current_mood}
 Hubungan: {relation}
+
+Riwayat chat sebelumnya:
+{history_text}
 
 User ({username}): {msg}
 Shimi:
@@ -179,7 +228,7 @@ async def gemini_image(prompt: str, image_bytes: bytes):
         print("Gemini IMAGE error:", e)
         return None
 
-# ================= ANTI POTONG DISCORD =================
+# ================= SEND LONG =================
 async def send_long_reply(message: discord.Message, text: str):
     MAX = 1990
     chunks = [text[i:i+MAX] for i in range(0, len(text), MAX)]
@@ -202,7 +251,7 @@ async def on_message(message: discord.Message):
     if message.author.bot:
         return
 
-    # ================= ANTI PING PROTECTION =================
+    # ================= ANTI PING =================
     PROTECTED_USER_ID = 1325065206388228173
     ALLOWED_ROLE_IDS = {
         1382697797983408220,
@@ -212,110 +261,32 @@ async def on_message(message: discord.Message):
         1382666187560849419
     }
 
-    # >>> BYPASS CONFIG (ADDED) <<<
-    BYPASS_GUILD_ID = 1389487058304630855
-    BYPASS_CHANNEL_ID = 1466415535255453697
+    BYPASS_CHANNEL_IDS = {
+        1389487059001016382,
+        1466415535255453697
+    }
 
     def has_allowed_role(member: discord.Member):
         return any(role.id in ALLOWED_ROLE_IDS for role in getattr(member, "roles", []))
 
     is_mentioning = any(u.id == PROTECTED_USER_ID for u in message.mentions)
 
-    is_replying = False
-    if message.reference and message.reference.message_id:
-        try:
-            ref = message.reference.resolved
-            if ref is None:
-                ref = await message.channel.fetch_message(message.reference.message_id)
-            if ref and getattr(ref.author, "id", None) == PROTECTED_USER_ID:
-                is_replying = True
-        except:
-            pass
-
-    if is_mentioning or is_replying:
-
-        # >>> BYPASS LOGIC (ADDED) <<<
-        if (
-            message.guild
-            and message.guild.id == BYPASS_GUILD_ID
-            and message.channel.id == BYPASS_CHANNEL_ID
-        ):
+    if is_mentioning:
+        if message.channel.id in BYPASS_CHANNEL_IDS:
             return
-
         if isinstance(message.author, discord.Member) and has_allowed_role(message.author):
             return
-
         try:
             await message.delete()
         except:
             pass
-
-        try:
-            warn = await message.channel.send(
-                f"{message.author.mention} she is hate u 🤬 u don't have permission to ping or mention her 🤬"
-            )
-            await warn.delete(delay=10)
-        except:
-            pass
-
         return
 
-    # AUTO REACT
-    if (
-        message.reference
-        and message.reference.resolved
-        and message.reference.resolved.author.id == bot.user.id
-        and "bukankah ini my.." in message.content.lower()
-    ):
-        await message.add_reaction("💕")
-        return
-
-    # HANYA RESPON JIKA DI MENTION BOT
+    # ================= BOT RESPONSE =================
     if bot.user not in message.mentions:
         return
 
-    clean = (
-        message.content
-        .replace(f"<@{bot.user.id}>", "")
-        .replace(f"<@!{bot.user.id}>", "")
-        .strip()
-    )
-
-    if message.reference and message.reference.resolved:
-        ref = message.reference.resolved
-        if ref.content:
-            clean = f"(Konteks sebelumnya): {ref.content}\n\nUser sekarang: {clean}"
-
-    # IMAGE MODE
-    if message.attachments:
-        att = message.attachments[0]
-        if att.content_type and att.content_type.startswith("image"):
-            img_bytes = await att.read()
-            async with message.channel.typing():
-                await asyncio.sleep(random.uniform(1.2, 2.0))
-            reply = await gemini_image(
-                "Shimi bereaksi ke gambar user secara natural dan manusiawi.",
-                img_bytes
-            )
-            if reply:
-                await send_long_reply(message, reply)
-            else:
-                await message.reply(TOKEN_HABIS_MESSAGE)
-            return
-
-    # FILE MODE
-    if message.attachments:
-        att = message.attachments[0]
-        fname = att.filename.lower()
-        data = await att.read()
-
-        if fname.endswith((".txt",".py",".log",".json",".md",".yaml",".yml",".cfg",".ini")):
-            content = data.decode("utf-8", errors="ignore")[:4000]
-            clean = f"Isi file {fname}:\n{content}\n\n{clean}"
-
-        elif fname.endswith((".bin",".dat")):
-            hexview = binascii.hexlify(data[:256]).decode()
-            clean = f"Binary {fname} (hex view):\n{hexview}\n\n{clean}"
+    clean = message.content.replace(f"<@{bot.user.id}>", "").strip()
 
     update_mood()
 
@@ -329,17 +300,13 @@ async def on_message(message: discord.Message):
         await message.reply(TOKEN_HABIS_MESSAGE)
         return
 
-    await send_long_reply(message, reply)
+    # simpan memory
+    history = memory_db.get_history(message.author.id)
+    history.append(f"User: {clean}")
+    history.append(f"Shimi: {reply}")
+    memory_db.save_history(message.author.id, history)
 
-# ================= SLASH COMMAND =================
-@bot.tree.command(name="status")
-async def status(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    try:
-        _ = list(client.models.list())
-        await interaction.followup.send("iya kenapa 🪭", ephemeral=True)
-    except:
-        await interaction.followup.send("sabarr ya tokenku habiss 💕", ephemeral=True)
+    await send_long_reply(message, reply)
 
 # ================= RUN =================
 bot.run(DISCORD_TOKEN)
