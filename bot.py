@@ -212,6 +212,10 @@ async def on_message(message: discord.Message):
         1382666187560849419
     }
 
+    # >>> BYPASS CONFIG (ADDED) <<<
+    BYPASS_GUILD_ID = 1389487058304630855
+    BYPASS_CHANNEL_ID = 1466415535255453697
+
     def has_allowed_role(member: discord.Member):
         return any(role.id in ALLOWED_ROLE_IDS for role in getattr(member, "roles", []))
 
@@ -229,6 +233,15 @@ async def on_message(message: discord.Message):
             pass
 
     if is_mentioning or is_replying:
+
+        # >>> BYPASS LOGIC (ADDED) <<<
+        if (
+            message.guild
+            and message.guild.id == BYPASS_GUILD_ID
+            and message.channel.id == BYPASS_CHANNEL_ID
+        ):
+            return
+
         if isinstance(message.author, discord.Member) and has_allowed_role(message.author):
             return
 
@@ -241,7 +254,7 @@ async def on_message(message: discord.Message):
             warn = await message.channel.send(
                 f"{message.author.mention} she is hate u 🤬 u don't have permission to ping or mention her 🤬"
             )
-            await warn.delete(delay=10)  # <<< AUTO DELETE 10 DETIK
+            await warn.delete(delay=10)
         except:
             pass
 
